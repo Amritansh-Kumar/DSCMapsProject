@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context="com.example.acer.tripmaker.Models.CheckpPoints"
+    android:background="@drawable/world"
+    android:alpha="0.7">
+
+    <Button
+        android:id="@+id/make_trip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/button_style"
+        android:layout_margin="15dp"
+        android:text="New Trip" />
+    <Button
+        android:layout_margin="10dp"
+        android:id="@+id/add_checkpoint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/button_style"
+        android:text="Add Checkpoint"/>
+
+    <TextView
+        android:layout_margin="10dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="15dp"
+        android:text="Checkpoints list:"
+        android:textSize="20sp" />
+
+    <ListView
+        android:layout_margin="10dp"
+        android:id="@+id/checkpoints_list"
+        android:layout_width="match_parent"
+        android:layout_height="133dp"></ListView>
+
+    <TextView
+        android:layout_margin="10dp"
+        android:textSize="20dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="From DB:" />
+
+    <ListView
+        android:layout_margin="10dp"
+        android:id="@+id/listview_coords_db"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</LinearLayout>

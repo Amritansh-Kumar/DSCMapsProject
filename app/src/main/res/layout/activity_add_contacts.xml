@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/world"
+    android:orientation="vertical"
+    android:alpha="0.7"
+    tools:context="com.example.acer.tripmaker.Models.AddContactsActivity">
+
+    <TextView
+        android:id="@+id/textView2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="20sp"
+        android:layout_margin="15dp"
+        android:text="Enter the details of Group members:" />
+
+    <EditText
+        android:id="@+id/editText_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ems="10"
+        android:hint="Name"
+        android:layout_margin="15dp"
+        android:inputType="textPersonName" />
+
+    <EditText
+        android:id="@+id/editText_phone"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ems="10"
+        android:hint="Phone no."
+        android:layout_margin="15dp"
+        android:inputType="phone" />
+
+    <EditText
+        android:id="@+id/editText_email"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ems="10"
+        android:hint="E-mail address"
+        android:layout_margin="15dp"
+        android:inputType="textWebEmailAddress" />
+
+    <Button
+        android:id="@+id/button_save"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Save"
+        android:layout_gravity="center"
+        android:background="@drawable/button_style" />
+</LinearLayout>
