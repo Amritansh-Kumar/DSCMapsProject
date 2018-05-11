@@ -1,11 +1,13 @@
 package com.example.acer.tripmaker.Map;
 
 import android.Manifest;
+import android.app.PendingIntent;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.sqlite.SQLiteDatabase;
+import android.graphics.Color;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -13,6 +15,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
@@ -24,8 +27,15 @@ import android.widget.Toast;
 import com.example.acer.tripmaker.Database.ContactsDBHelper;
 import com.example.acer.tripmaker.Database.DataBase;
 import com.example.acer.tripmaker.Models.CheckpPoints;
+import com.example.acer.tripmaker.Models.GeofenceTransitionsIntentService;
 import com.example.acer.tripmaker.R;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.Geofence;
+import com.google.android.gms.location.GeofencingClient;
+import com.google.android.gms.location.GeofencingRequest;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.location.places.ui.PlaceSelectionListener;
@@ -34,8 +44,13 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.Circle;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -44,26 +59,35 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallback {
+public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.OnConnectionFailedListener,
+        GoogleApiClient.ConnectionCallbacks {
+
+    public static Location mLastLocation;
 
     private SQLiteDatabase DB = null;
     private DataBase database;
     private Button add_checkpoints;
-
     private GoogleMap mMap;
     private LocationManager mLocationManager;
     private LocationListener mLocationListener;
     private List<Address> addressList;
     private Geocoder geocoder;
-    public static Location mLastLocation;
     private int showMarker = 0;
     private Intent intent;
     private List<LatLng> checkpoints;
     private List<String> checkpointNames;
     private LatLng origin, destination;
     private String url;
-    private String coordl1,coordl2;
-    private Double l1,l2;
+    private String coordl1, coordl2;
+    private Double l1, l2;
+    private GeofencingClient geofencingClient;
+    private List<Geofence> mGeofenceList;
+    private PendingIntent mGeofencePendingIntent;
+    private static final long GEO_DURATION = 60 * 60 * 1000;
+    private static final String GEOFENCE_REQ_ID = "My Geofence";
+    private static final float GEOFENCE_RADIUS = 200.0f;
+    private final int GEOFENCE_REQ_CODE = 0;
+    private List<Circle> geoFenceLimits;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,14 +116,32 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
         intent = getIntent();
         checkpoints = CheckpPoints.mLocationsList;
         checkpointNames = CheckpPoints.mPlacesList;
-        LatLng latLng = new LatLng(0,0) ;
+        LatLng latLng = new LatLng(0, 0);
+        geofencingClient = LocationServices.getGeofencingClient(this);
+        mGeofenceList = new ArrayList<>();
+        geoFenceLimits = new ArrayList<>();
+    }
+
+    private GeofencingRequest getGeofencingRequest() {
+        GeofencingRequest.Builder builder = new GeofencingRequest.Builder();
+        builder.setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER);
+        builder.addGeofences(mGeofenceList);
+        return builder.build();
+    }
+
+    private PendingIntent getmGeofencePendingIntent() {
+        if (mGeofencePendingIntent != null) {
+            return mGeofencePendingIntent;
+        }
+        Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
+        mGeofencePendingIntent = PendingIntent.getService(this, GEOFENCE_REQ_CODE, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return mGeofencePendingIntent;
     }
 
     private void searchAction(LatLng add) {
         SearchTask searchTask = new SearchTask(mMap, getApplicationContext());
         searchTask.execute(add);
     }
-
 
     // method to set put a marker at users current location
     private void setLocation(Location mLocation) {
@@ -109,9 +151,8 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
             mMap.addMarker(new MarkerOptions().position(userLocation).title("your location").icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
         }
         mMap.moveCamera(CameraUpdateFactory.newLatLng(userLocation));
-        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(userLocation.latitude, userLocation.longitude), 12.0f));
+        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(userLocation.latitude, userLocation.longitude), 15.0f));
     }
-
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -126,8 +167,6 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
             }
         }
     }
-
-
 
     /**
      * Manipulates the map once available.
@@ -148,21 +187,24 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
         mLocationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
         mLocationListener = new LocationListener() {
             @Override
-            public void onLocationChanged(Location location) {}
+            public void onLocationChanged(Location location) {
+                mLastLocation = location;
+            }
+
             @Override
-            public void onStatusChanged(String s, int i, Bundle bundle) {}
+            public void onStatusChanged(String s, int i, Bundle bundle) {
+            }
+
             @Override
-            public void onProviderEnabled(String s) {}
+            public void onProviderEnabled(String s) {
+            }
+
             @Override
-            public void onProviderDisabled(String s) {}
+            public void onProviderDisabled(String s) {
+            }
         };
 
-//        if (CheckpPoints.mLocationsList.size() >= 3){
-//            origin = CheckpPoints.mLocationsList.get(1);
-//            destination = CheckpPoints.mLocationsList.get(2);
-//            startDownload();
-//        }
-        if (CheckpPoints.mLocationsList.size() >= 2){
+        if (CheckpPoints.mLocationsList.size() >= 2) {
             origin = CheckpPoints.mLocationsList.get(0);
             destination = CheckpPoints.mLocationsList.get(1);
             startDownload();
@@ -186,35 +228,6 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
             mMap.setMyLocationEnabled(true);
         }
 
-//        // checking if no checkpoint is added
-//        if (positon == 0 && intent.getIntExtra("first", 0) == 1) {
-//
-//            LatLng loc;
-//            if (mLastLocation != null) {
-//                loc = new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude());
-//            } else {
-//                loc = new LatLng(28.7041, 77.1025);
-//            }
-//            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(loc, 11));
-//
-//        } else if (positon == 0 && intent.getIntExtra("first", 0) != 1) {
-//
-//            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(CheckpPoints.mLocationsList.get(1), 11));
-//            plot();
-//        }
-//        // if elment from the list other than that present at 0th index is clicked than show that place on the map
-//        else {
-//
-//            LatLng placeLocation = CheckpPoints.mLocationsList.get(positon);
-//            String placeName = CheckpPoints.mPlacesList.get(positon);
-//            plot();
-//            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(placeLocation, 12));
-//        }
-
-
-
-
-
         // checking if no checkpoint is added
         if (CheckpPoints.mLocationsList.size() == 0) {
 
@@ -224,25 +237,14 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
             } else {
                 loc = new LatLng(28.7041, 77.1025);
             }
-            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(loc, 11));
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(loc, 15));
 
-        }
-//        else if (positon == 0 && intent.getIntExtra("first", 0) != 1) {
-//
-//            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(CheckpPoints.mLocationsList.get(1), 11));
-//            plot();
-//        }
-        // if elment from the list other than that present at 0th index is clicked than show that place on the map
-        else {
-
-
-            LatLng placeLocation = CheckpPoints.mLocationsList.get(CheckpPoints.mLocationsList.size()-1);
+        } else {
+            LatLng placeLocation = CheckpPoints.mLocationsList.get(CheckpPoints.mLocationsList.size() - 1);
             String placeName = CheckpPoints.mPlacesList.get(positon);
             plot();
-            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(placeLocation, 12));
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(placeLocation, 15));
         }
-
-
 
 
         // adding a marker on clicking the map at the clicked point
@@ -250,32 +252,26 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
             @Override
             public void onMapClick(LatLng latLng) {
 
+//                mGeofenceList.add(new Geofence.Builder()
+//                        .setRequestId(GEOFENCE_REQ_ID)
+//                        .setCircularRegion(latLng.latitude, latLng.longitude, GEOFENCE_RADIUS)
+//                        .setExpirationDuration(GEO_DURATION)
+//                        .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER | Geofence.GEOFENCE_TRANSITION_EXIT)
+//                        .build()
+//                );
+
                 String address = "";
                 geocoder = new Geocoder(getApplicationContext(), Locale.getDefault());
                 try {
                     addressList = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1);
                     if (addressList != null && addressList.size() > 0) {
-                        int addlinesize = addressList.get(0).getMaxAddressLineIndex();
-                        for (int i = 0; i < addlinesize; i++) {
-                            if (addressList.get(0).getAddressLine(i) != null) {
-                                address += addressList.get(0).getAddressLine(i);
-                            }
-                        }
-
-                        if (addressList.get(0).getThoroughfare() != null) {
-                            if (addressList.get(0).getSubThoroughfare() != null) {
-                                address += addressList.get(0).getSubThoroughfare() + ", ";
-                            }
-                            address += addressList.get(0).getThoroughfare();
+                        if (addressList.get(0).getAddressLine(0) != null) {
+                            address += addressList.get(0).getAddressLine(0);
                         }
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-
-
-
-
 
                 if (address == "") {
 
@@ -287,52 +283,17 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
                 options.position(latLng)
                         .title(address);
 
-//                if (CheckpPoints.mPlacesList.size() == 1) {
-//                    origin = latLng;
-//                    options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
-//                } else if (CheckpPoints.mPlacesList.size() == 2) {
-//                    destination = latLng;
-//                    options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE));
-//                } else {
-//                    options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
-//                }
-
-
-
+                l1 = Double.parseDouble(String.valueOf(latLng.latitude));
+                l2 = Double.parseDouble(String.valueOf(latLng.longitude));
                 if (CheckpPoints.mPlacesList.size() == 0) {
                     origin = latLng;
-                    l1 = latLng.latitude;
-                    l2 = latLng.longitude;
-
-                    coordl1 = l1.toString();
-                    coordl2 = l2.toString();
-                    l1 = Double.parseDouble(coordl1);
-                    l2 = Double.parseDouble(coordl2);
-
                     options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
                 } else if (CheckpPoints.mPlacesList.size() == 1) {
                     destination = latLng;
-                    l1 = latLng.latitude;
-                    l2 = latLng.longitude;
-
-                    coordl1 = l1.toString();
-                    coordl2 = l2.toString();
-                    l1 = Double.parseDouble(coordl1);
-                    l2 = Double.parseDouble(coordl2);
-
                     options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE));
                 } else {
-                    l1 = latLng.latitude;
-                    l2 = latLng.longitude;
-
-                    coordl1 = l1.toString();
-                    coordl2 = l2.toString();
-                    l1 = Double.parseDouble(coordl1);
-                    l2 = Double.parseDouble(coordl2);
-
                     options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
                 }
-
 
                 String SQLSTATE;
                 ContentValues cvContact = new ContentValues();
@@ -340,8 +301,6 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
                 cvContact.put(ContactsDBHelper.colLongitude, l2);
                 DB.insert("COORDINATES", null, cvContact);
                 Log.d("Cords", "saved");
-//
-
 
                 // adding a marker at the clicked positon
                 mMap.addMarker(options);
@@ -350,20 +309,76 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
                 CheckpPoints.mLocationsList.add(latLng);
                 CheckpPoints.mAdapter.notifyDataSetChanged();
 
-
-//                if (CheckpPoints.mLocationsList.size() == 3) {
-//                    startDownload();
-//                }
                 if (CheckpPoints.mLocationsList.size() == 2) {
                     startDownload();
                 }
+
+                markGeofenceBoundary(latLng, options);
             }
         });
+    }
+
+    private void markGeofenceBoundary(LatLng fencingPoiont, MarkerOptions options) {
+        mGeofenceList.add(new Geofence.Builder()
+                .setRequestId(GEOFENCE_REQ_ID)
+                .setCircularRegion(fencingPoiont.latitude, fencingPoiont.longitude, GEOFENCE_RADIUS)
+                .setExpirationDuration(GEO_DURATION)
+                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER | Geofence.GEOFENCE_TRANSITION_EXIT)
+                .build()
+        );
+
+        // Draw Geofence circle on GoogleMap
+        Log.d("drawing circles", "geofencing circles");
+
+        CircleOptions circleOptions = new CircleOptions()
+                .center(options.getPosition())
+                .strokeColor(Color.argb(50, 70, 70, 70))
+                .fillColor(Color.argb(100, 150, 150, 150))
+                .radius(GEOFENCE_RADIUS);
+        geoFenceLimits.add(mMap.addCircle(circleOptions));
+        addingGeofences();
 
     }
 
+    private void addingGeofences() {
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+
+            geofencingClient.addGeofences(getGeofencingRequest(), getmGeofencePendingIntent())
+                    .addOnSuccessListener(this, new OnSuccessListener<Void>() {
+                        @Override
+                        public void onSuccess(Void aVoid) {
+                            Log.e("onSucces()", "successful");
+                        }
+                    })
+                    .addOnFailureListener(this, new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            Log.e("onFailure()", "onFailure");
+                        }
+                    });
+        }
+
+    }
+
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+        Log.i("googleApiClient", "onConnected()");
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+        Log.i("googleApiClient", "onConnectionSuspended()");
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+        Log.i("googleApiClient", "onConnectionFailed()");
+    }
+
+
     // helper method to get url and start background task to download data from url
-    private void startDownload (){
+    private void startDownload() {
         url = getUrl(origin, destination);
         Log.e("URL is", url);
         MyDownloadTask downloadTask = new MyDownloadTask(mMap, getApplicationContext());
@@ -375,7 +390,6 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
 
         String origin = "origin=" + orgn.latitude + "," + orgn.longitude;
         String destination = "destination=" + dest.latitude + "," + dest.longitude;
-        ;
         String sensor = "sensor=false";
         String parameters = origin + "&" + destination + "&" + sensor;
         String output = "json";
@@ -385,23 +399,12 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
     }
 
     private void plot() {
-//        for (int i = 1; i < checkpoints.size(); i++) {
+        //        for (int i = 1; i < checkpoints.size(); i++) {
         for (int i = 0; i < checkpoints.size(); i++) {
-
             // adding a marker at the clicked positon
             MarkerOptions options = new MarkerOptions();
             options.position(checkpoints.get(i))
                     .title(checkpointNames.get(i));
-
-//            if (i == 1) {
-//                options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
-//                origin = checkpoints.get(1);
-//            } else if (i == 2) {
-//                options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE));
-//                destination = checkpoints.get(2);
-//            } else {
-//                options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
-//            }
 
             if (i == 0) {
                 options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
@@ -413,31 +416,30 @@ public class MapsActivity2 extends FragmentActivity implements OnMapReadyCallbac
                 options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
             }
 
+
             // adding marker on the checkpoint
             mMap.addMarker(options);
 
+            markGeofenceBoundary(new LatLng(checkpoints.get(i).latitude, checkpoints.get(i).longitude), options);
         }
 
         if (origin != null && destination != null) {
             startDownload();
         }
     }
-    //    protected void onResume()
-//    {
-//        super.onResume();
-//        database = new DataBase(getApplicationContext());
-//        DB = database.getDB();
-//
-//    }
-    public  void onResume() {
+
+    public void onResume() {
         super.onResume();
-
-
     }
+
     @Override
     protected void onPause() {
         super.onPause();
         mMap.clear();
     }
 
+    public static Intent makeNotificationIntent(Context geofenceService, String msg) {
+        Log.d("message", msg);
+        return new Intent(geofenceService, MapsActivity2.class);
+    }
 }

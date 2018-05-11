@@ -1,5 +1,6 @@
 package com.example.acer.tripmaker.Models;
 
+import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
@@ -123,7 +124,8 @@ public class CheckpPoints extends AppCompatActivity {
         final Cursor cursor = DB.rawQuery("SELECT * FROM COORDINATES", null);
 
         while (cursor.moveToNext()) {
-            Log.d("cursor", cursor.getString(cursor.getColumnIndexOrThrow(ContactsDBHelper.colLatitude)));
+//            Log.d("cursor", cursor.getString(cursor.getColumnIndexOrThrow(ContactsDBHelper.colLatitude)));
+            Log.d("cursor", "cursor.getString(cursor.getColumnIndexOrThrow(ContactsDBHelper.colLatitude))");
         }
 
         CoordsCursorAdapter coordsCursorAdapter = new CoordsCursorAdapter(this,cursor);
@@ -146,4 +148,10 @@ public class CheckpPoints extends AppCompatActivity {
         );
 
     }
+
+//    static Intent makeNotificationIntent(Context geofenceService, String msg)
+//    {
+//        Log.d("message",msg);
+//        return new Intent(geofenceService,CheckpPoints.class);
+//    }
 }
